@@ -1,0 +1,120 @@
+"Fix 3 bugs in buyer auth — logout not visible, saved address not filling, profile sheet empty. Here are exact changes:
+Fix 1 — Logout dropdown not visible on mobile (z-index trapped in drawer)
+The dropdown in BuyerAccountButton renders inside the drawer which clips it. Replace the dropdown with a bottom sheet instead for the drawer variant. In BuyerAuthModal.tsx inside BuyerAccountButton, when variant === 'drawer' show an inline expanded menu instead of a floating dropdown:
+typescript
+// For drawer variant — show inline expanded list, no dropdown popup needed
+if (variant === 'drawer') {
+  return (
+    <div className='space-y-2'>
+      {/* User info row */}
+      <div className='flex items-center gap-3 p-3 bg-purple-50 rounded-xl mb-3'>
+        <div className='w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0'>
+          {initial}
+        </div>
+        <div className='flex-1 min-w-0'>
+          <p className='font-semibold text-sm truncate'>
+            {buyerProfile?.full_name ?? 'My Account'}
+          </p>
+          <p className='text-xs text-muted-foreground truncate'>
+            {buyerSession.user.email}
+          </p>
+        </div>
+      </div>
+
+      {/* My Orders button */}
+      <button
+        onClick={() => setShowOrders(true)}
+        className='w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl hover:bg-gray-50 border border-gray-100 transition-colors'
+      >
+        <span>📦</span>
+        <span className='font-medium'>My Orders</span>
+        <ChevronRight className='w-4 h-4 ml-auto text-muted-foreground' />
+      </button>
+
+      {/* My Profile button */}
+      <button
+        onClick={() => setShowProfile(true)}
+        className='w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl hover:bg-gray-50 border border-gray-100 transition-colors'
+      >
+        <span>👤</span>
+        <span className='font-medium'>My Profile & Address</span>
+        <ChevronRight className='w-4 h-4 ml-auto text-muted-foreground' />
+      </button>
+
+      {/* Logout button — always visible, never in dropdown */}
+      <button
+        onClick={() => signOut()}
+        className='w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl hover:bg-red-50 border border-red-100 text-red-500 transition-colors'
+      >
+        <LogOut className='w-4 h-4' />
+        <span className='font-medium'>Logout</span>
+      </button>
+
+      {showOrders && <BuyerOrdersSheet onClose={() => setShowOrders(false)} />}
+      {showProfile && <BuyerProfileSheet onClose={() => setShowProfile(false)} />}
+    </div>
+  );
+}
+Add LogOut to the lucide-react imports at the top of BuyerAuthModal.tsx.
+Fix 2 — Saved address not pre-filling in checkout
+In CheckoutFlow.tsx find the useEffect that pre-fills buyer address. It currently only runs when step changes. Replace it with one that also runs when buyerProfile changes:
+typescript
+// Pre-fill address whenever buyerProfile becomes available
+useEffect(() => {
+  if (!buyerProfile) return;
+  setForm(prev => {
+    // Only fill empty fields — don't overwrite what buyer already typed
+    return {
+      name: prev.name || buyerProfile.full_name || '',
+      phone: prev.phone || buyerProfile.phone || '',
+      address: prev.address || buyerProfile.default_address || '',
+      city: prev.city || buyerProfile.default_city || '',
+      state: prev.state || buyerProfile.default_state || '',
+      pincode: prev.pincode || buyerProfile.default_pincode || '',
+      instructions: prev.instructions || '',
+    };
+  });
+}, [buyerProfile]); // runs every time profile loads or changes
+Also show a small green banner above the form when address is auto-filled:
+typescript
+{buyerProfile?.default_address && (
+  <div className='flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-4 py-2.5 mb-4'>
+    <span className='text-green-600 text-sm'>✓ Address auto-filled from your profile</span>
+    <button
+      onClick={() => setForm(prev => ({ ...prev, address: '', city: '', state: '', pincode: '' }))}
+      className='ml-auto text-xs text-gray-400 underline'
+    >
+      Clear
+    </button>
+  </div>
+)}
+Fix 3 — BuyerProfileSheet showing empty fields
+Add a useEffect in BuyerProfileSheet to sync form whenever buyerProfile updates:
+typescript
+function BuyerProfileSheet({ onClose }: { onClose: () => void }) {
+  const { buyerSession, buyerProfile, refreshProfile } = useBuyerAuth();
+  const [form, setForm] = useState({
+    full_name: buyerProfile?.full_name ?? '',
+    phone: buyerProfile?.phone ?? '',
+    default_address: buyerProfile?.default_address ?? '',
+    default_city: buyerProfile?.default_city ?? '',
+    default_state: buyerProfile?.default_state ?? '',
+    default_pincode: buyerProfile?.default_pincode ?? '',
+  });
+
+  // Sync form when profile loads (handles late-loading case)
+  useEffect(() => {
+    if (!buyerProfile) return;
+    setForm({
+      full_name: buyerProfile.full_name ?? '',
+      phone: buyerProfile.phone ?? '',
+      default_address: buyerProfile.default_address ?? '',
+      default_city: buyerProfile.default_city ?? '',
+      default_state: buyerProfile.default_state ?? '',
+      default_pincode: buyerProfile.default_pincode ?? '',
+    });
+  }, [buyerProfile]); // re-syncs if profile arrives after sheet opens
+
+  // ... rest of component unchanged
+}
+After all 3 fixes

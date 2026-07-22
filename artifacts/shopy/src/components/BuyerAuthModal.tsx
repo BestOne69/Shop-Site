@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, X, User, Loader2 } from "lucide-react";
+import { Eye, EyeOff, X, User, Loader2, LogOut, ChevronRight } from "lucide-react";
 import { buyerSupabase } from "@/lib/buyer-supabase";
 import { useBuyerAuth } from "@/lib/buyer-auth-context";
 import { toast } from "sonner";
@@ -420,6 +420,60 @@ export function BuyerAccountButton({
 
   const initial = (buyerProfile?.full_name ?? buyerSession.user.email ?? "?")[0].toUpperCase();
 
+  // Fix 1 — drawer variant: inline expanded menu so logout is always visible (no z-index clipping)
+  if (variant === 'drawer') {
+    return (
+      <div className='space-y-2'>
+        {/* User info row */}
+        <div className='flex items-center gap-3 p-3 bg-purple-50 rounded-xl mb-3'>
+          <div className='w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0'>
+            {initial}
+          </div>
+          <div className='flex-1 min-w-0'>
+            <p className='font-semibold text-sm truncate'>
+              {buyerProfile?.full_name ?? 'My Account'}
+            </p>
+            <p className='text-xs text-muted-foreground truncate'>
+              {buyerSession.user.email}
+            </p>
+          </div>
+        </div>
+
+        {/* My Orders button */}
+        <button
+          onClick={() => setShowOrders(true)}
+          className='w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl hover:bg-gray-50 border border-gray-100 transition-colors'
+        >
+          <span>📦</span>
+          <span className='font-medium'>My Orders</span>
+          <ChevronRight className='w-4 h-4 ml-auto text-muted-foreground' />
+        </button>
+
+        {/* My Profile button */}
+        <button
+          onClick={() => setShowProfile(true)}
+          className='w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl hover:bg-gray-50 border border-gray-100 transition-colors'
+        >
+          <span>👤</span>
+          <span className='font-medium'>My Profile & Address</span>
+          <ChevronRight className='w-4 h-4 ml-auto text-muted-foreground' />
+        </button>
+
+        {/* Logout button — always visible, never in dropdown */}
+        <button
+          onClick={() => signOut()}
+          className='w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl hover:bg-red-50 border border-red-100 text-red-500 transition-colors'
+        >
+          <LogOut className='w-4 h-4' />
+          <span className='font-medium'>Logout</span>
+        </button>
+
+        {showOrders && <BuyerOrdersSheet onClose={() => setShowOrders(false)} />}
+        {showProfile && <BuyerProfileSheet onClose={() => setShowProfile(false)} />}
+      </div>
+    );
+  }
+
   return (
     <div className="relative">
       <button
@@ -673,6 +727,19 @@ function BuyerProfileSheet({ onClose }: { onClose: () => void }) {
     default_pincode: buyerProfile?.default_pincode ?? "",
   });
   const [saving, setSaving] = useState(false);
+
+  // Fix 3 — sync form when profile loads late (sheet may open before profile arrives)
+  useEffect(() => {
+    if (!buyerProfile) return;
+    setForm({
+      full_name: buyerProfile.full_name ?? '',
+      phone: buyerProfile.phone ?? '',
+      default_address: buyerProfile.default_address ?? '',
+      default_city: buyerProfile.default_city ?? '',
+      default_state: buyerProfile.default_state ?? '',
+      default_pincode: buyerProfile.default_pincode ?? '',
+    });
+  }, [buyerProfile]);
 
   const set = useCallback(
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>

@@ -234,6 +234,21 @@ function DetailsStep({ product, cart, initialData, onProceed, onBack }: {
     }
   }, [buyerLoading, buyerProfile, modeChosen]);
 
+  // Fix 2 — pre-fill form whenever buyerProfile becomes available (handles late-loading case)
+  useEffect(() => {
+    if (!buyerProfile) return;
+    setForm(prev => ({
+      name: prev.name || buyerProfile.full_name || '',
+      phone: prev.phone || buyerProfile.phone || '',
+      email: prev.email || buyerSession?.user.email || '',
+      address: prev.address || buyerProfile.default_address || '',
+      city: prev.city || buyerProfile.default_city || '',
+      state: prev.state || buyerProfile.default_state || '',
+      pincode: prev.pincode || buyerProfile.default_pincode || '',
+      instructions: prev.instructions || '',
+    }));
+  }, [buyerProfile]);
+
   const switchMode = (m: "saved" | "new") => { setModeChosen(true); setMode(m); };
 
   const set = (key: keyof BuyerData) =>
@@ -382,6 +397,17 @@ function DetailsStep({ product, cart, initialData, onProceed, onBack }: {
           <div className="space-y-4">
             {hasSavedAddress && (
               <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">New delivery address</p>
+            )}
+            {buyerProfile?.default_address && (
+              <div className='flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-4 py-2.5'>
+                <span className='text-green-600 text-sm'>✓ Address auto-filled from your profile</span>
+                <button
+                  onClick={() => setForm(prev => ({ ...prev, address: '', city: '', state: '', pincode: '' }))}
+                  className='ml-auto text-xs text-gray-400 underline'
+                >
+                  Clear
+                </button>
+              </div>
             )}
             <div>
               <label className="text-sm font-medium mb-1 block">Full Name *</label>
