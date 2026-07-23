@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Check, CheckCircle2, MapPin, PlusCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Copy, Check, CheckCircle2, MapPin, PlusCircle, Loader2, ImagePlus, X as XIcon } from "lucide-react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBuyerAuth } from "@/lib/buyer-auth-context";
@@ -515,7 +515,33 @@ function PaymentStep({ product, shop, cart, orderId, onProceed, onBack }: {
 }) {
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const total = product.price * cart.quantity;
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file (JPG, PNG, etc.)");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5 MB");
+      return;
+    }
+    setScreenshotFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setScreenshotPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function removeScreenshot() {
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   const handleUTR = async (utr: string) => {
     setIsSubmitting(true);
@@ -526,7 +552,23 @@ function PaymentStep({ product, shop, cart, orderId, onProceed, onBack }: {
         setIsSubmitting(false);
         return;
       }
-      await onProceed(utr, null);
+
+      // Upload screenshot if one was selected
+      let screenshotUrl: string | null = null;
+      if (screenshotFile) {
+        const { url, error } = await uploadImage(
+          "Product-images",
+          screenshotFile,
+          `payment-screenshots/${orderId}_${Date.now()}`
+        );
+        if (error) {
+          toast.error("Screenshot upload failed — continuing without it");
+        } else {
+          screenshotUrl = url;
+        }
+      }
+
+      await onProceed(utr, screenshotUrl);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
       setIsSubmitting(false);
@@ -585,6 +627,60 @@ function PaymentStep({ product, shop, cart, orderId, onProceed, onBack }: {
             This seller hasn't set up UPI payments yet. Please contact them directly.
           </div>
         )}
+
+        {/* ── Payment Screenshot Upload ── */}
+        <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <ImagePlus className="w-4 h-4 text-primary shrink-0" />
+            <p className="text-sm font-semibold">Upload Payment Screenshot</p>
+            <span className="ml-auto text-xs text-muted-foreground">(optional)</span>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Attach a screenshot of your payment confirmation to help the seller verify faster.
+          </p>
+
+          {screenshotPreview ? (
+            <div className="relative">
+              <img
+                src={screenshotPreview}
+                alt="Payment screenshot"
+                className="w-full rounded-xl object-cover max-h-56 border border-border"
+              />
+              <button
+                onClick={removeScreenshot}
+                className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition-colors"
+                aria-label="Remove screenshot"
+              >
+                <XIcon className="w-3.5 h-3.5 text-white" />
+              </button>
+              <div className="mt-2 flex items-center gap-2 text-xs text-emerald-600 font-medium">
+                <Check className="w-3.5 h-3.5" />
+                Screenshot ready to submit
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex flex-col items-center gap-2 py-6 rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/60 hover:bg-primary/5 transition-all"
+            >
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <ImagePlus className="w-5 h-5 text-primary" />
+              </div>
+              <span className="text-sm font-medium text-primary">Tap to upload screenshot</span>
+              <span className="text-xs text-muted-foreground">JPG, PNG · Max 5 MB</span>
+            </button>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </div>
       </div>
     </div>
   );
